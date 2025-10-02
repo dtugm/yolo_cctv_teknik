@@ -135,7 +135,7 @@ def UI_box(x, img, color=None, label=None, line_thickness=None):
 
         img = draw_border(img, (c1[0], c1[1] - t_size[1] -3), (c1[0] + t_size[0], c1[1]+3), color, 1, 8, 2)
 
-        cv2.putText(img, label, (c1[0], c1[1] -j2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+        cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
 
 def intersect(A,B,C,D):
