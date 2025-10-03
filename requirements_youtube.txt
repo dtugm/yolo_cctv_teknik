@@ -1,0 +1,11 @@
+# Additional requirements for YouTube Live streaming
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.0.0
+ffmpeg-python>=0.2.0
+
+# Note: You also need FFmpeg installed on your system
+# Install with:
+# - Ubuntu/Debian: sudo apt update && sudo apt install ffmpeg
+# - macOS: brew install ffmpeg
+# - Windows: Download from https://ffmpeg.org/download.html

@@ -173,7 +173,9 @@ class InferenceEngine(BasePredictor):
         
         if len(det) == 0:
             # No detections, still draw UI
-            self.renderer.draw_detections(im0, np.array([]), np.array([]), np.array([]), self.model.names)
+            annotated_frame = self.renderer.draw_detections(im0, np.array([]), np.array([]), np.array([]), self.model.names)
+            # Store the final annotated frame for external access
+            self.annotated_frame = annotated_frame
             self._update_performance_metrics(frame_start_time)
             return log_string
         
@@ -209,9 +211,12 @@ class InferenceEngine(BasePredictor):
             bbox_xyxy = outputs[:, :4]
             identities = outputs[:, -2]
             object_id = outputs[:, -1]
-            self.renderer.draw_detections(im0, bbox_xyxy, identities, object_id, self.model.names)
+            annotated_frame = self.renderer.draw_detections(im0, bbox_xyxy, identities, object_id, self.model.names)
         else:
-            self.renderer.draw_detections(im0, np.array([]), np.array([]), np.array([]), self.model.names)
+            annotated_frame = self.renderer.draw_detections(im0, np.array([]), np.array([]), np.array([]), self.model.names)
+        
+        # Store the final annotated frame for external access
+        self.annotated_frame = annotated_frame
         
         self._update_performance_metrics(frame_start_time)
         

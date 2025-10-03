@@ -66,3 +66,29 @@ class StreamingConfig:
     jpeg_quality: int = 80
     target_fps: int = 30
 
+
+@dataclass
+class YouTubeStreamingConfig:
+    """Configuration for YouTube Live streaming."""
+    
+    enabled: bool = False
+    client_secrets_file: str = "client_secrets.json"
+    broadcast_title: str = "CCTV Teknik Test Stream"
+    broadcast_description: str = "Real-time object detection and tracking using YOLO"
+    privacy_status: str = "unlisted"  # "public", "private", "unlisted"
+    
+    # Video encoding settings
+    resolution: str = "720p"  # "480p", "720p", "1080p"
+    frame_rate: str = "30fps"  # "30fps", "60fps"
+    video_bitrate: int = 2500  # kbps
+    audio_bitrate: int = 128   # kbps
+    
+    # FFmpeg settings
+    ffmpeg_preset: str = "veryfast"  # "ultrafast", "superfast", "veryfast", "faster", "fast"
+    ffmpeg_crf: int = 23  # Constant Rate Factor (lower = better quality, higher file size)
+    
+    # Stream management
+    auto_start: bool = True
+    auto_end: bool = True
+    max_stream_duration: int = 43200  # 12 hours in seconds (YouTube limit)
+
