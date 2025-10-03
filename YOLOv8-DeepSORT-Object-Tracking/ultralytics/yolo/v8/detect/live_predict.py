@@ -29,6 +29,8 @@ import threading
 from flask import Flask, Response
 import socket
 import sys
+import os
+import json
 
 # --- existing globals ---
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
@@ -38,6 +40,18 @@ deepsort = None
 
 object_counter = {}
 object_counter1 = {}
+
+# Logging configuration
+LOG_FORMAT = "json"  # "json" or "txt"
+LOG_FILE_JSON = "vehicle_detection_log.json"
+LOG_FILE_TXT = "vehicle_detection_log.txt"
+LOG_SUMMARY_JSON = "vehicle_summary.json"
+
+# Logging variables
+log_lock = threading.Lock()
+last_logged_counters = {"in": {}, "out": {}}
+detection_log = []
+
 
 # Enhanced reporting variables
 total_detections = 0
@@ -66,6 +80,166 @@ http_streamer = None
 # ------------------------------
 # For readability here I will include them directly as they were in your uploaded file:
 # -- begin pasted helper functions (unchanged) --
+
+def log_vehicle_detection(direction, vehicle_type, vehicle_id, timestamp=None):
+    """Log individual vehicle detection with timestamp"""
+    global detection_log
+    
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    log_entry = {
+        "timestamp": timestamp,
+        "direction": direction,  # "in" or "out"
+        "vehicle_type": vehicle_type,
+        "vehicle_id": vehicle_id,
+        "session_time": time.time() - session_start_time
+    }
+    
+    with log_lock:
+        detection_log.append(log_entry)
+        
+        # Write to JSON file
+        if LOG_FORMAT == "json" or LOG_FORMAT == "both":
+            write_json_log(log_entry)
+        
+        # Write to TXT file
+        if LOG_FORMAT == "txt" or LOG_FORMAT == "both":
+            write_txt_log(log_entry)
+    
+    print(f"🚗 {direction.upper()}: {vehicle_type} (ID: {vehicle_id}) at {timestamp}")
+
+def write_json_log(log_entry):
+    """Write individual log entry to JSON file"""
+    try:
+        # Read existing data
+        if os.path.exists(LOG_FILE_JSON):
+            with open(LOG_FILE_JSON, 'r') as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    data = {"detections": [], "summary": {}}
+        else:
+            data = {"detections": [], "summary": {}}
+        
+        # Add new detection
+        data["detections"].append(log_entry)
+        
+        # Update summary
+        direction = log_entry["direction"]
+        vehicle_type = log_entry["vehicle_type"]
+        
+        if "summary" not in data:
+            data["summary"] = {"in": {}, "out": {}, "total": {}}
+        
+        if direction not in data["summary"]:
+            data["summary"][direction] = {}
+        
+        if vehicle_type not in data["summary"][direction]:
+            data["summary"][direction][vehicle_type] = 0
+        
+        data["summary"][direction][vehicle_type] += 1
+        
+        # Update total summary
+        if "total" not in data["summary"]:
+            data["summary"]["total"] = {}
+        
+        if vehicle_type not in data["summary"]["total"]:
+            data["summary"]["total"][vehicle_type] = 0
+        
+        data["summary"]["total"][vehicle_type] = (
+            data["summary"].get("in", {}).get(vehicle_type, 0) + 
+            data["summary"].get("out", {}).get(vehicle_type, 0)
+        )
+        
+        # Add metadata
+        data["metadata"] = {
+            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "session_duration": time.time() - session_start_time,
+            "total_detections": len(data["detections"])
+        }
+        
+        # Write back to file
+        with open(LOG_FILE_JSON, 'w') as f:
+            json.dump(data, f, indent=2)
+            
+    except Exception as e:
+        print(f"❌ Error writing JSON log: {e}")
+
+def write_txt_log(log_entry):
+    """Write individual log entry to TXT file"""
+    try:
+        log_line = f"{log_entry['timestamp']} | {log_entry['direction'].upper()} | {log_entry['vehicle_type']} | ID: {log_entry['vehicle_id']}\n"
+        
+        with open(LOG_FILE_TXT, 'a') as f:
+            f.write(log_line)
+            
+    except Exception as e:
+        print(f"❌ Error writing TXT log: {e}")
+
+def update_summary_file():
+    """Update summary file with current counters"""
+    try:
+        summary_data = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "session_duration": time.time() - session_start_time,
+            "vehicles_in": dict(object_counter1),  # North direction (entering)
+            "vehicles_out": dict(object_counter),   # South direction (exiting)
+            "total_in": sum(object_counter1.values()),
+            "total_out": sum(object_counter.values()),
+            "net_vehicles": sum(object_counter1.values()) - sum(object_counter.values()),
+            "fps": current_fps,
+            "total_detections": total_detections
+        }
+        
+        # Calculate combined totals
+        all_vehicle_types = set(list(object_counter.keys()) + list(object_counter1.keys()))
+        summary_data["combined_totals"] = {}
+        
+        for vehicle_type in all_vehicle_types:
+            in_count = object_counter1.get(vehicle_type, 0)
+            out_count = object_counter.get(vehicle_type, 0)
+            summary_data["combined_totals"][vehicle_type] = {
+                "in": in_count,
+                "out": out_count,
+                "total": in_count + out_count
+            }
+        
+        with open(LOG_SUMMARY_JSON, 'w') as f:
+            json.dump(summary_data, f, indent=2)
+            
+    except Exception as e:
+        print(f"❌ Error updating summary file: {e}")
+
+def initialize_log_files():
+    """Initialize log files with headers"""
+    try:
+        # Initialize JSON log
+        if not os.path.exists(LOG_FILE_JSON):
+            initial_data = {
+                "detections": [],
+                "summary": {"in": {}, "out": {}, "total": {}},
+                "metadata": {
+                    "session_started": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "total_detections": 0
+                }
+            }
+            with open(LOG_FILE_JSON, 'w') as f:
+                json.dump(initial_data, f, indent=2)
+        
+        # Initialize TXT log
+        if not os.path.exists(LOG_FILE_TXT):
+            with open(LOG_FILE_TXT, 'w') as f:
+                f.write(f"=== Vehicle Detection Log Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
+                f.write("Format: TIMESTAMP | DIRECTION | VEHICLE_TYPE | ID\n")
+                f.write("=" * 80 + "\n")
+        
+        print("📝 Log files initialized successfully")
+        
+    except Exception as e:
+        print(f"❌ Error initializing log files: {e}")
+
 
 def estimatespeed(Location1, Location2):
     d_pixel = math.sqrt(math.pow(Location2[0] - Location1[0], 2) + math.pow(Location2[1] - Location1[1], 2))
@@ -251,22 +425,44 @@ def draw_boxes(img, bbox, names, object_id, identities=None, offset=(0, 0)):
         obj_name = names[object_id[i]]
         label = f'ID:{id} | {obj_name}'
         data_deque[id].appendleft(center)
+        # In the draw_boxes function, replace the intersection detection section:
         if len(data_deque[id]) >= 2:
             direction = get_direction(data_deque[id][0], data_deque[id][1])
             object_speed = estimatespeed(data_deque[id][1], data_deque[id][0])
             speed_line_queue[id].append(object_speed)
+            
             if intersect(data_deque[id][0], data_deque[id][1], line_scaled[0], line_scaled[1]):
                 cv2.line(img, line_scaled[0], line_scaled[1], (255, 255, 255), line_thickness)
+                
+                # Enhanced logging with direction detection
                 if "South" in direction:
                     if obj_name not in object_counter:
                         object_counter[obj_name] = 1
+                        # Log the vehicle going OUT
+                        log_vehicle_detection("out", obj_name, id)
                     else:
-                        object_counter[obj_name] += 1
+                        # Check if this is a new detection for this ID
+                        if id not in last_logged_counters.get("out", {}):
+                            object_counter[obj_name] += 1
+                            log_vehicle_detection("out", obj_name, id)
+                            if "out" not in last_logged_counters:
+                                last_logged_counters["out"] = {}
+                            last_logged_counters["out"][id] = True
+                            
                 if "North" in direction:
                     if obj_name not in object_counter1:
                         object_counter1[obj_name] = 1
+                        # Log the vehicle going IN
+                        log_vehicle_detection("in", obj_name, id)
                     else:
-                        object_counter1[obj_name] += 1
+                        # Check if this is a new detection for this ID
+                        if id not in last_logged_counters.get("in", {}):
+                            object_counter1[obj_name] += 1
+                            log_vehicle_detection("in", obj_name, id)
+                            if "in" not in last_logged_counters:
+                                last_logged_counters["in"] = {}
+                            last_logged_counters["in"][id] = True
+
         try:
             avg_speed = sum(speed_line_queue[id]) // len(speed_line_queue[id])
             label += f" | {avg_speed}km/h"
@@ -314,6 +510,27 @@ def draw_boxes(img, bbox, names, object_id, identities=None, offset=(0, 0)):
         cv2.putText(img, "No vehicles detected", (30, y_pos), 0, font_scale * 0.8, [200, 200, 200], thickness=max(1, thickness-1), lineType=cv2.LINE_AA)
     draw_enhanced_info_panel(img)
     return img
+
+def periodic_summary_update():
+    """Periodically update summary file every 5 seconds"""
+    while True:
+        time.sleep(5)  # Update every 5 seconds
+        update_summary_file()
+
+# Start the periodic update thread
+def start_logging_services():
+    """Start all logging services"""
+    initialize_log_files()
+    
+    # Start periodic summary update thread
+    summary_thread = threading.Thread(target=periodic_summary_update, daemon=True)
+    summary_thread.start()
+    
+    print("📊 Logging services started")
+    print(f"📝 JSON Log: {LOG_FILE_JSON}")
+    print(f"📝 TXT Log: {LOG_FILE_TXT}")
+    print(f"📊 Summary: {LOG_SUMMARY_JSON}")
+
 
 # -- end pasted helper functions --
 
@@ -592,6 +809,7 @@ class DetectionPredictor(BasePredictor):
 @hydra.main(version_base=None, config_path=str(DEFAULT_CONFIG.parent), config_name=DEFAULT_CONFIG.name)
 def predict(cfg):
     global http_streamer
+    start_logging_services()
     init_tracker()
     cfg.model = cfg.model or "yolov8n.pt"
     cfg.imgsz = check_imgsz(cfg.imgsz, min_dim=2)
