@@ -45,6 +45,7 @@ class VisualizationConfig:
     show_speed: bool = True
     show_direction: bool = True
     show_counters: bool = False
+    show_info_panel: bool = True
     
     # Counter direction control: which direction counts as enter/exit
     # Options: "north_enter" (North = Enter, South = Exit) or "south_enter" (South = Enter, North = Exit)

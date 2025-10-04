@@ -189,7 +189,8 @@ class DetectionRenderer:
         # Draw counters and info panel
         if self.config.show_counters:
             self._draw_counters(frame, width, height)
-        self._draw_info_panel(frame, width, height)
+        if self.config.show_info_panel:
+            self._draw_info_panel(frame, width, height)
         
         return frame
     

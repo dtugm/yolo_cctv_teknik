@@ -108,6 +108,13 @@ def main():
                        help='Save results to file')
     parser.add_argument('--imgsz', type=int, default=640,
                        help='Inference image size (default: 640)')
+    parser.add_argument('--counter-direction', type=str, default='north_enter',
+                       choices=['north_enter', 'south_enter'],
+                       help='Counter direction: north_enter (North=Enter, South=Exit) or south_enter (South=Enter, North=Exit) (default: north_enter)')
+    parser.add_argument('--show-info-panel', action='store_true', default=True,
+                       help='Show system information panel (default: True)')
+    parser.add_argument('--hide-info-panel', action='store_true',
+                       help='Hide system information panel')
     
     # YouTube streaming specific arguments
     parser.add_argument('--youtube-title', type=str, 
@@ -131,6 +138,9 @@ def main():
     
     args = parser.parse_args()
     
+    # Handle info panel visibility logic
+    show_info_panel = args.show_info_panel and not args.hide_info_panel
+    
     # Create configurations
     inference_config = InferenceConfig(
         model_path=args.model,
@@ -141,7 +151,10 @@ def main():
     )
     
     tracking_config = TrackingConfig()
-    visualization_config = VisualizationConfig()
+    visualization_config = VisualizationConfig(
+        counter_direction=args.counter_direction,
+        show_info_panel=show_info_panel
+    )
     
     youtube_config = YouTubeStreamingConfig(
         enabled=True,
