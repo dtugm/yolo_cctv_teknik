@@ -128,19 +128,31 @@ class DetectionRenderer:
                 ):
                     cv2.line(frame, line_scaled[0], line_scaled[1], (255, 255, 255), line_thickness)
                     
-                    # South = going down = Keluar (Exit)
-                    if "South" in direction:
-                        if obj_name not in self.object_counter_out:
-                            self.object_counter_out[obj_name] = 1
-                        else:
-                            self.object_counter_out[obj_name] += 1
-                    
-                    # North = going up = Masuk (Entry)        
-                    if "North" in direction:
-                        if obj_name not in self.object_counter_in:
-                            self.object_counter_in[obj_name] = 1
-                        else:
-                            self.object_counter_in[obj_name] += 1
+                    # Determine enter/exit based on counter_direction setting
+                    if self.config.counter_direction == "north_enter":
+                        # North = going up = Enter, South = going down = Exit
+                        if "North" in direction:
+                            if obj_name not in self.object_counter_in:
+                                self.object_counter_in[obj_name] = 1
+                            else:
+                                self.object_counter_in[obj_name] += 1
+                        elif "South" in direction:
+                            if obj_name not in self.object_counter_out:
+                                self.object_counter_out[obj_name] = 1
+                            else:
+                                self.object_counter_out[obj_name] += 1
+                    elif self.config.counter_direction == "south_enter":
+                        # South = going down = Enter, North = going up = Exit
+                        if "South" in direction:
+                            if obj_name not in self.object_counter_in:
+                                self.object_counter_in[obj_name] = 1
+                            else:
+                                self.object_counter_in[obj_name] += 1
+                        elif "North" in direction:
+                            if obj_name not in self.object_counter_out:
+                                self.object_counter_out[obj_name] = 1
+                            else:
+                                self.object_counter_out[obj_name] += 1
             
             # Add speed and direction to label
             try:

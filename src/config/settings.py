@@ -46,6 +46,10 @@ class VisualizationConfig:
     show_direction: bool = True
     show_counters: bool = False
     
+    # Counter direction control: which direction counts as enter/exit
+    # Options: "north_enter" (North = Enter, South = Exit) or "south_enter" (South = Enter, North = Exit)
+    counter_direction: str = "north_enter"
+    
     # Counting line coordinates (as fraction of image size)
     counting_line_start: Tuple[float, float] = (0.1, 0.6)  # (x, y) as fraction
     counting_line_end: Tuple[float, float] = (0.9, 0.6)
