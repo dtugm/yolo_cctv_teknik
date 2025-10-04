@@ -148,3 +148,6 @@ wandb/
 *_saved_model/
 *_web_model/
 *_openvino_model/
+
+# YouTube streaming
+client_secrets.json
