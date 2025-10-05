@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional
 import time
 
@@ -28,9 +28,16 @@ class DetectionRenderer:
         self.data_deque: Dict[int, deque] = {}
         self.speed_line_queue: Dict[int, List[int]] = {}
         
-        # Counters for objects crossing the line
-        self.object_counter_in: Dict[str, int] = {}
-        self.object_counter_out: Dict[str, int] = {}
+        # Counters for objects crossing the line (only track specific classes)
+        # Initialize with all tracked classes at 0
+        self.tracked_classes = {"car", "person", "motorcycle"}
+        self.object_counter_in: Dict[str, int] = {cls: 0 for cls in self.tracked_classes}
+        self.object_counter_out: Dict[str, int] = {cls: 0 for cls in self.tracked_classes}
+        
+        # Reset functionality
+        self.last_reset_date = datetime.now().date()
+        self.auto_reset_enabled = self.config.enable_auto_daily_reset
+        self.keyboard_reset_enabled = self.config.enable_keyboard_reset
         
         # Performance metrics
         self.total_detections = 0
@@ -39,6 +46,34 @@ class DetectionRenderer:
         self.fps_start_time = time.time()
         self.current_fps = 0.0
         self.frame_processing_times = deque(maxlen=30)
+    
+    def _check_daily_reset(self) -> None:
+        """Check if a new day has started and reset counters if auto-reset is enabled."""
+        current_date = datetime.now().date()
+        if self.auto_reset_enabled and current_date > self.last_reset_date:
+            self.reset_counters()
+            self.last_reset_date = current_date
+    
+    def reset_counters(self) -> None:
+        """Reset only the counters while keeping tracking data."""
+        self.object_counter_in = {cls: 0 for cls in self.tracked_classes}
+        self.object_counter_out = {cls: 0 for cls in self.tracked_classes}
+        self.total_detections = 0
+        
+    def handle_keyboard_input(self, key: int) -> bool:
+        """
+        Handle keyboard input for reset functionality.
+        
+        Args:
+            key: Key code from cv2.waitKey()
+            
+        Returns:
+            True if key was handled, False otherwise
+        """
+        if self.keyboard_reset_enabled and key == ord('r'):
+            self.reset_counters()
+            return True
+        return False
         
     def draw_detections(
         self,
@@ -61,6 +96,9 @@ class DetectionRenderer:
         Returns:
             Annotated frame
         """
+        # Check for daily reset
+        self._check_daily_reset()
+        
         height, width, _ = frame.shape
         
         # Calculate scaled counting line based on image dimensions
@@ -91,14 +129,17 @@ class DetectionRenderer:
             class_id = int(class_ids[i]) if i < len(class_ids) else 0
             current_detections += 1
             
+            # Get object name and check if it's a tracked class
+            obj_name = class_names.get(class_id, "unknown").lower()
+            is_tracked_class = obj_name in self.tracked_classes
+            
             # Initialize deque for new tracks
             if track_id not in self.data_deque:
                 self.data_deque[track_id] = deque(maxlen=self.config.trail_length)
                 self.speed_line_queue[track_id] = []
                 
             color = compute_color_for_labels(class_id)
-            obj_name = class_names.get(class_id, "unknown")
-            label = f'ID:{track_id} | {obj_name}'
+            label = f'ID:{track_id} | {obj_name.title()}'
             
             # Add center to tracking deque
             self.data_deque[track_id].appendleft(center)
@@ -119,8 +160,8 @@ class DetectionRenderer:
                     )
                     self.speed_line_queue[track_id].append(object_speed)
                 
-                # Check if crossed counting line
-                if self.config.show_counters and intersect(
+                # Check if crossed counting line (only for tracked classes)
+                if self.config.show_counters and is_tracked_class and intersect(
                     self.data_deque[track_id][0],
                     self.data_deque[track_id][1],
                     line_scaled[0],
@@ -132,27 +173,15 @@ class DetectionRenderer:
                     if self.config.counter_direction == "north_enter":
                         # North = going up = Enter, South = going down = Exit
                         if "North" in direction:
-                            if obj_name not in self.object_counter_in:
-                                self.object_counter_in[obj_name] = 1
-                            else:
-                                self.object_counter_in[obj_name] += 1
+                            self.object_counter_in[obj_name] += 1
                         elif "South" in direction:
-                            if obj_name not in self.object_counter_out:
-                                self.object_counter_out[obj_name] = 1
-                            else:
-                                self.object_counter_out[obj_name] += 1
+                            self.object_counter_out[obj_name] += 1
                     elif self.config.counter_direction == "south_enter":
                         # South = going down = Enter, North = going up = Exit
                         if "South" in direction:
-                            if obj_name not in self.object_counter_in:
-                                self.object_counter_in[obj_name] = 1
-                            else:
-                                self.object_counter_in[obj_name] += 1
+                            self.object_counter_in[obj_name] += 1
                         elif "North" in direction:
-                            if obj_name not in self.object_counter_out:
-                                self.object_counter_out[obj_name] = 1
-                            else:
-                                self.object_counter_out[obj_name] += 1
+                            self.object_counter_out[obj_name] += 1
             
             # Add speed and direction to label
             try:
@@ -195,75 +224,104 @@ class DetectionRenderer:
         return frame
     
     def _draw_counters(self, frame: np.ndarray, width: int, height: int) -> None:
-        """Draw entry/exit counters on the frame."""
-        font_scale = max(0.6, width / 2500)
-        thickness = max(2, int(width / 1000))
-        bottom_margin = int(height * 0.25)
-        panel_y = height - bottom_margin
-        panel_width = int(width * 0.3)
+        """Draw  entry/exit counters on the frame."""
+        # Calculate dimensions and positions
+        font_scale = max(0.7, width / 2000)
+        thickness = max(2, int(width / 800))
+        panel_width = int(width * 0.28)
         
-        # Draw "Keluar" (Exit) panel
-        entering_panel_x = width - panel_width - 20
-        cv2.rectangle(
-            frame, 
-            (entering_panel_x, panel_y - 40), 
-            (entering_panel_x + panel_width, panel_y), 
-            (85, 45, 255), -1
-        )
-        cv2.putText(
-            frame, 'Keluar', 
-            (entering_panel_x + 10, panel_y - 10), 
-            0, font_scale, [225, 255, 255], 
-            thickness=thickness, lineType=cv2.LINE_AA
-        )
+        # Calculate panel height to fit exactly 3 classes with proper spacing
+        header_height = 40
+        item_height = 45  # Increased from 35 for better spacing
+        item_spacing = 10  # Additional spacing between items
+        content_height = header_height + (3 * item_height) + (2 * item_spacing) + 20  # 3 items + spacing + padding
+        panel_height = content_height
         
-        if self.object_counter_out:
-            for idx, (key, value) in enumerate(self.object_counter_out.items()):
-                cnt_str = f"{key}: {value}"
-                y_pos = panel_y + 40 + (idx * 50)
-                cv2.rectangle(
-                    frame, 
-                    (entering_panel_x, y_pos - 25), 
-                    (entering_panel_x + int(panel_width * 0.8), y_pos + 15), 
-                    (85, 45, 255), -1
-                )
-                cv2.putText(
-                    frame, cnt_str, 
-                    (entering_panel_x + 10, y_pos), 
-                    0, font_scale, [225, 255, 255], 
-                    thickness=thickness, lineType=cv2.LINE_AA
-                )
+        # Position panels at the bottom
+        panel_y = height - panel_height - 20
+        left_panel_x = 20
+        right_panel_x = width - panel_width - 20
         
-        # Draw "Masuk" (Entry) panel
-        cv2.rectangle(
-            frame, 
-            (20, panel_y - 40), 
-            (20 + panel_width, panel_y), 
-            (85, 45, 255), -1
-        )
-        cv2.putText(
-            frame, 'Masuk', 
-            (30, panel_y - 10), 
-            0, font_scale, [225, 255, 255], 
-            thickness=thickness, lineType=cv2.LINE_AA
+        # Color scheme
+        header_color = (30, 30, 30)  # Dark gray header
+        panel_color = (45, 45, 45)   # Darker gray panel
+        border_color = (100, 100, 100)  # Light gray border
+        text_color = (255, 255, 255)  # White text
+        accent_color = (0, 150, 255)  # Blue accent
+        
+        # Draw left panel (Entry)
+        self._draw_counter_panel(
+            frame, left_panel_x, panel_y, panel_width, panel_height,
+            "ENTRY", self.object_counter_in, header_color, panel_color, 
+            border_color, text_color, accent_color, font_scale, thickness
         )
         
-        if self.object_counter_in:
-            for idx, (key, value) in enumerate(self.object_counter_in.items()):
-                cnt_str = f"{key}: {value}"
-                y_pos = panel_y + 40 + (idx * 50)
-                cv2.rectangle(
-                    frame, 
-                    (20, y_pos - 25), 
-                    (20 + int(panel_width * 0.8), y_pos + 15), 
-                    (85, 45, 255), -1
-                )
-                cv2.putText(
-                    frame, cnt_str, 
-                    (30, y_pos), 
-                    0, font_scale, [225, 255, 255], 
-                    thickness=thickness, lineType=cv2.LINE_AA
-                )
+        # Draw right panel (Exit)
+        self._draw_counter_panel(
+            frame, right_panel_x, panel_y, panel_width, panel_height,
+            "EXIT", self.object_counter_out, header_color, panel_color,
+            border_color, text_color, accent_color, font_scale, thickness
+        )
+        
+        # Draw reset instructions
+        if self.keyboard_reset_enabled:
+            reset_text = "Press 'R' to reset counters"
+            reset_y = panel_y - 30
+            cv2.putText(
+                frame, reset_text,
+                (width // 2 - len(reset_text) * 8, reset_y),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.6, (200, 200, 200),
+                thickness, cv2.LINE_AA
+            )
+    
+    def _draw_counter_panel(self, frame: np.ndarray, x: int, y: int, width: int, height: int,
+                           title: str, counters: Dict[str, int], header_color: Tuple[int, int, int],
+                           panel_color: Tuple[int, int, int], border_color: Tuple[int, int, int],
+                           text_color: Tuple[int, int, int], accent_color: Tuple[int, int, int],
+                           font_scale: float, thickness: int) -> None:
+        """Draw a single counter panel with styling."""
+        # Draw main panel with border
+        cv2.rectangle(frame, (x, y), (x + width, y + height), border_color, 2)
+        cv2.rectangle(frame, (x + 2, y + 2), (x + width - 2, y + height - 2), panel_color, -1)
+        
+        # Draw header
+        header_height = 40
+        cv2.rectangle(frame, (x + 2, y + 2), (x + width - 2, y + header_height), header_color, -1)
+        
+        # Draw title
+        title_size = cv2.getTextSize(title, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+        title_x = x + (width - title_size[0]) // 2
+        title_y = y + header_height - 10
+        cv2.putText(frame, title, (title_x, title_y), cv2.FONT_HERSHEY_SIMPLEX, 
+                   font_scale, accent_color, thickness, cv2.LINE_AA)
+        
+        # Draw counters - always show all three tracked classes
+        item_height = 45
+        item_spacing = 10
+        start_y = y + header_height + 15
+        
+        # Define the order of classes to display
+        class_order = ["car", "person", "motorcycle"]
+        
+        for idx, obj_name in enumerate(class_order):
+            count = counters.get(obj_name, 0)
+            
+            # Draw counter item background
+            item_y = start_y + (idx * (item_height + item_spacing))
+            cv2.rectangle(frame, (x + 8, item_y - 20), (x + width - 8, item_y + 10), 
+                         (60, 60, 60), -1)
+            
+            # Draw object name
+            obj_text = obj_name.title()
+            cv2.putText(frame, obj_text, (x + 15, item_y - 5), cv2.FONT_HERSHEY_SIMPLEX,
+                       font_scale * 0.8, text_color, thickness, cv2.LINE_AA)
+            
+            # Draw count with accent color
+            count_text = str(count)
+            count_size = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+            count_x = x + width - count_size[0] - 15
+            cv2.putText(frame, count_text, (count_x, item_y - 5), cv2.FONT_HERSHEY_SIMPLEX,
+                       font_scale, accent_color, thickness, cv2.LINE_AA)
     
     def _draw_info_panel(self, frame: np.ndarray, width: int, height: int) -> None:
         """Draw system information panel."""
@@ -327,9 +385,7 @@ class DetectionRenderer:
         """Reset all counters and tracking data."""
         self.data_deque.clear()
         self.speed_line_queue.clear()
-        self.object_counter_in.clear()
-        self.object_counter_out.clear()
-        self.total_detections = 0
+        self.reset_counters()
         self.session_start_time = time.time()
         self.fps_counter = 0
         self.fps_start_time = time.time()

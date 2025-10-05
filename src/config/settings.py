@@ -59,6 +59,10 @@ class VisualizationConfig:
     pixels_per_meter: int = 10
     time_constant: float = 15 * 3.6  # Convert to km/h
     
+    # Reset functionality settings
+    enable_keyboard_reset: bool = True  # Enable 'R' key to reset counters
+    enable_auto_daily_reset: bool = True  # Enable automatic daily reset
+    
 
 @dataclass
 class StreamingConfig:

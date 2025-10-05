@@ -42,11 +42,26 @@ def main():
                        help='Show system information panel (default: True)')
     parser.add_argument('--hide-info-panel', action='store_true',
                        help='Hide system information panel')
+    parser.add_argument('--show-counters', action='store_true', default=True,
+                       help='Show object counters (default: True)')
+    parser.add_argument('--hide-counters', action='store_true',
+                       help='Hide object counters')
+    parser.add_argument('--enable-keyboard-reset', action='store_true', default=True,
+                       help='Enable R key to reset counters (default: True)')
+    parser.add_argument('--disable-keyboard-reset', action='store_true',
+                       help='Disable R key reset functionality')
+    parser.add_argument('--enable-auto-reset', action='store_true', default=True,
+                       help='Enable automatic daily reset (default: True)')
+    parser.add_argument('--disable-auto-reset', action='store_true',
+                       help='Disable automatic daily reset')
     
     args = parser.parse_args()
     
-    # Handle info panel visibility logic
+    # Handle visibility and feature logic
     show_info_panel = args.show_info_panel and not args.hide_info_panel
+    show_counters = args.show_counters and not args.hide_counters
+    enable_keyboard_reset = args.enable_keyboard_reset and not args.disable_keyboard_reset
+    enable_auto_reset = args.enable_auto_reset and not args.disable_auto_reset
     
     # Create configurations
     inference_config = InferenceConfig(
@@ -60,7 +75,10 @@ def main():
     tracking_config = TrackingConfig()
     visualization_config = VisualizationConfig(
         counter_direction=args.counter_direction,
-        show_info_panel=show_info_panel
+        show_info_panel=show_info_panel,
+        show_counters=show_counters,
+        enable_keyboard_reset=enable_keyboard_reset,
+        enable_auto_daily_reset=enable_auto_reset
     )
     
     # Create Hydra config for BasePredictor

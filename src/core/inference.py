@@ -218,6 +218,12 @@ class InferenceEngine(BasePredictor):
         # Store the final annotated frame for external access
         self.annotated_frame = annotated_frame
         
+        # Handle keyboard input if showing window
+        if self.args.show:
+            key = cv2.waitKey(1) & 0xFF
+            if key != 255:  # Key was pressed
+                self.renderer.handle_keyboard_input(key)
+        
         self._update_performance_metrics(frame_start_time)
         
         return log_string
