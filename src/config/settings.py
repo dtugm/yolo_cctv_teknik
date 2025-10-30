@@ -101,3 +101,13 @@ class YouTubeStreamingConfig:
     auto_end: bool = True
     max_stream_duration: int = 43200  # 12 hours in seconds (YouTube limit)
 
+@dataclass
+class PlateCaptureConfig:
+    """Configuration for plate capture on speed violations."""
+    enabled: bool = True
+    output_dir: str = "output/violations"
+    speed_limit: float = 60.0  # km/h
+    save_metadata: bool = True
+    image_format: str = "jpg"
+    image_quality: int = 95
+    min_bbox_area: int = 1000
