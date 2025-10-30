@@ -37,7 +37,7 @@ def non_max_suppression(boxes, max_bbox_overlap, scores=None):
     if len(boxes) == 0:
         return []
 
-    boxes = boxes.astype(float)
+    boxes = boxes.astype(np.float)
     pick = []
 
     x1 = boxes[:, 0]
