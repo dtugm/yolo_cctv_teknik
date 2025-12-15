@@ -109,6 +109,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+venv*/
 
 # Spyder project settings
 .spyderproject
@@ -132,6 +133,7 @@ dmypy.json
 datasets/
 runs/
 wandb/
+output/
 
 .DS_Store
 
