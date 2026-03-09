@@ -1,0 +1,29 @@
+[
+    {
+        "id": "Jalan Masuk Utama",
+        "source": "rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV",
+        "model": "yolov8n.pt",
+        "conf": 0.25,
+        "iou": 0.7,
+        "port": 5050,
+        "counter_direction": "north_enter"
+    },
+    {
+        "id": "Tugu Teknik",
+        "source": "rtsp://10.2.10.70:7447/AOAw5Ce31UIYCVDH",
+        "model": "yolov8n.pt",
+        "conf": 0.3,
+        "iou": 0.7,
+        "port": 5051,
+        "counter_direction": "south_enter"
+    },
+    {
+        "id": "Gerbang ERIC",
+        "source": "rtsp://10.2.10.70:7447/rNVL3fqfqxknwEJt",
+        "model": "yolov8n.pt",
+        "conf": 0.25,
+        "iou": 0.7,
+        "port": 5052,
+        "counter_direction": "north_enter"
+    }
+]

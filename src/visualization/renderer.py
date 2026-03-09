@@ -252,14 +252,14 @@ class DetectionRenderer:
         # Draw left panel (Entry)
         self._draw_counter_panel(
             frame, left_panel_x, panel_y, panel_width, panel_height,
-            "ENTRY", self.object_counter_in, header_color, panel_color, 
+            "EXIT", self.object_counter_in, header_color, panel_color, 
             border_color, text_color, accent_color, font_scale, thickness
         )
         
         # Draw right panel (Exit)
         self._draw_counter_panel(
             frame, right_panel_x, panel_y, panel_width, panel_height,
-            "EXIT", self.object_counter_out, header_color, panel_color,
+            "ENTRY", self.object_counter_out, header_color, panel_color,
             border_color, text_color, accent_color, font_scale, thickness
         )
         

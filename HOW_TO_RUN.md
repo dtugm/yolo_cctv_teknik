@@ -283,3 +283,18 @@ done
 
 # Compare results in runs/detect/
 ```
+
+### Run cctv
+```bash
+cd /home/geoai/Desktop/yolo_cctv_teknik
+source venv/bin/activate
+
+# jalan utama
+taskset -c 0-1 python predict_live_stream.py --source rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV --device cuda:0 --port 5052
+
+# tugu teknik
+taskset -c 0-1 python predict_live_stream.py --source rtsp://10.2.10.70:7447/AOAw5Ce31UIYCVDH --device cuda:0 --port 5051
+
+# gerbang eric
+taskset -c 0-1 python predict_live_stream.py --source rtsp://10.2.10.70:7447/rNVL3fqfqxknwEJt --device cuda:0 --port 5050
+```

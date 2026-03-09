@@ -14,7 +14,7 @@ class InferenceConfig:
     iou_threshold: float = 0.7
     max_detections: int = 300
     image_size: int = 640
-    device: str = "cuda"  # "cuda" or "cpu"
+    device: str = "cuda:0"  # "cuda" or "cpu"
     half_precision: bool = False
     
     
@@ -87,7 +87,7 @@ class YouTubeStreamingConfig:
     privacy_status: str = "unlisted"  # "public", "private", "unlisted"
     
     # Video encoding settings
-    resolution: str = "720p"  # "480p", "720p", "1080p"
+    resolution: str = "1080p"  # "480p", "720p", "1080p"
     frame_rate: str = "30fps"  # "30fps", "60fps"
     video_bitrate: int = 2500  # kbps
     audio_bitrate: int = 128   # kbps
@@ -106,8 +106,8 @@ class PlateCaptureConfig:
     """Configuration for plate capture on speed violations."""
     enabled: bool = True
     output_dir: str = "output/violations"
-    speed_limit: float = 60.0  # km/h
+    speed_limit: float = 30.0  # km/h
     save_metadata: bool = True
     image_format: str = "jpg"
-    image_quality: int = 95
+    image_quality: int = 100
     min_bbox_area: int = 1000

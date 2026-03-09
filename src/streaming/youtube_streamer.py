@@ -274,7 +274,7 @@ class YouTubeStreamer:
             "720p": (1280, 720),
             "1080p": (1920, 1080)
         }
-        return resolution_map.get(self.config.resolution, (1280, 720))
+        return resolution_map.get(self.config.resolution, (1920, 1080))
     
     def _validate_rtmp_url(self) -> None:
         """Validate RTMP URL format for YouTube Live."""

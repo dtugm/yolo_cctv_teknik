@@ -6,7 +6,7 @@ Features:
 - Real-time Object Detection & Tracking (YOLO + DeepSORT)
 - Line Crossing Counting (People, Motor, Car)
 - HTTP/MJPEG Streaming (Video Feed)
-- REST API (/data) for real-time analytics
+- REST API (/data) for real-time analytics (Server-Sent Events)
 - Thread-safe implementations
 """
 
@@ -17,7 +17,8 @@ from pathlib import Path
 import time
 import threading
 import datetime
-from flask import jsonify
+import json
+from flask import jsonify, Response, stream_with_context
 
 # Add paths for src and deep_sort_pytorch
 PROJECT_ROOT = Path(__file__).parent
@@ -38,8 +39,8 @@ from src.capture.plate_capture import PlateCaptureManager
 #  Format: (x, y)
 #  (0,0) is Top-Left.
 # =================================================================================================
-COUNTING_LINE_START = (0, 350)    # Start point of the line (Left)
-COUNTING_LINE_END = (640, 350)    # End point of the line (Right)
+COUNTING_LINE_START = (100, 420)    # Start point of the line (Left)
+COUNTING_LINE_END = (1050, 420)    # End point of the line (Right)
 # =================================================================================================
 
 class TrafficCounter:
@@ -110,17 +111,9 @@ class TrafficCounter:
                     # Check intersection with counting line
                     if self._intersect(prev_center, current_center, self.line_start, self.line_end):
                         
-                        # Determine direction
-                        # Vector calculation to determine side
-                        # Cross product of LineVector and PathVector?
-                        # Or consistent logic: 'in' vs 'out'.
-                        # Let's assume North (Top) is Out, South (Bottom) is In.
-                        # Or use user simplified logic: moving Down (+Y) = In, Moving Up (-Y) = Out
-                        
                         dy = current_center[1] - prev_center[1]
                         
                         direction = "in" if dy > 0 else "out" # Simple Y-axis logic
-                        # Customizable logic can be added here
                         
                         class_key = self.class_mapping.get(track.class_id)
                         
@@ -134,10 +127,6 @@ class TrafficCounter:
                 self.previous_centroids[track_id] = current_center
             
             # Clean up old tracks
-            # Remove IDs that are no longer in the current tracks
-            # (Optional: keep them for a few frames to handle flickering, but simple removal matches deepsort lifecycle)
-            # Actually, we should only remove if deepsort removes them.
-            # self.previous_centroids keys that are NOT in current_ids should be removed
             for tid in list(self.previous_centroids.keys()):
                 if tid not in current_ids:
                     del self.previous_centroids[tid]
@@ -167,8 +156,6 @@ class LiveStreamInference(InferenceEngine):
             self.traffic_counter.update(self.tracker.tracks)
 
         # 2. Draw Counting Line & Annotations on the Frame
-        # We need to access the annotated frame. 
-        # super().write_results creates self.annotated_frame (checked in src/core/inference.py)
         if hasattr(self, 'annotated_frame') and self.annotated_frame is not None:
             import cv2
             
@@ -200,7 +187,6 @@ class LiveStreamInference(InferenceEngine):
 
     def _check_speed_violations(self, batch):
         """Check tracked objects for speed violations and capture."""
-        # Reuse existing implementation
         if not self.plate_capture_manager or not self.plate_capture_manager.enabled:
             return
         if not hasattr(self, 'tracker') or self.tracker is None:
@@ -317,10 +303,53 @@ def main():
 
     streaming_server = StreamingServer(streaming_config)
     
-    # Inject API Route
+    # Inject API Route with SSE
     @streaming_server.app.route('/data')
     def api_data():
-        return jsonify(counter.get_counts())
+        def generate():
+            last_counts = None
+            last_sent_time = 0
+            
+            while True:
+                with counter.lock:
+                    current_counts = counter.counts.copy()
+                
+                current_time = time.time()
+                
+                # Condition 1: Data Changed (Immediate Event)
+                data_changed = current_counts != last_counts
+                
+                # Condition 2: Heartbeat (Every 1.0s)
+                time_since_last = current_time - last_sent_time
+                heartbeat_due = time_since_last >= 1.0
+                
+                if data_changed or heartbeat_due:
+                    # Prepare payload
+                    payload = current_counts.copy()
+                    payload['date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    json_data = json.dumps(payload)
+                    yield f"data: {json_data}\n\n"
+                    
+                    # Update states
+                    last_counts = current_counts
+                    last_sent_time = current_time
+                
+                # Check frequent enough to be responsive (20Hz), but sleep to save CPU
+                time.sleep(0.05)
+        
+        response = Response(stream_with_context(generate()), mimetype='text/event-stream')
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['X-Accel-Buffering'] = 'no'
+        return response
+
+    @streaming_server.app.route('/stats')
+    def api_stats():
+        """Snapshot endpoint for non-streaming clients (e.g. Postman)"""
+        with counter.lock:
+            payload = counter.counts.copy()
+        payload['date'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return jsonify(payload)
 
     streaming_server.start()
     time.sleep(1)

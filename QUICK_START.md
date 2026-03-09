@@ -33,6 +33,18 @@ python predict_live_stream.py --source datasets/test.mp4 --port 5050
 # Open browser: http://localhost:5050/_yolo_stream/
 ```
 
+### Option 4: Enable Capturing Speed Limit Violation
+
+```bash
+python predict_live_stream.py --source rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV --device cuda:0 --enable-plate-capture --speed-limit 30
+```
+
+testing with SSH
+
+```bash
+xvfb-run -a python predict_live_stream.py --source rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV --device cuda:0 --enable-plate-capture --speed-limit 30
+```
+
 ## ⚙️ Common Commands
 
 ### Different Models
