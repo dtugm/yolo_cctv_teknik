@@ -7,7 +7,8 @@ while true; do
         --device cuda:0 \
         --port 5050 \
         --camera-id gerbang-eric \
-        --counter-api-url "https://cctv-vehicle-counter-api-production.up.railway.app"
+        --counter-api-url "https://cctv-vehicle-counter-api-production.up.railway.app" \
+        --counter-api-key "${COUNTER_API_KEY}"
     
     echo "Process stopped at $(date). Restarting in 5 seconds..."
     sleep 5

@@ -51,10 +51,11 @@ class CounterIngestClient:
     which are the source of truth for line-crossing detection.
     """
 
-    def __init__(self, api_url, camera_id, interval=10):
+    def __init__(self, api_url, camera_id, interval=10, api_key=None):
         self.api_url = api_url.rstrip("/")
         self.camera_id = camera_id
         self.interval = interval
+        self.api_key = api_key
         self.renderer = None  # Set after engine is created
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -89,9 +90,13 @@ class CounterIngestClient:
                     "counts": counts,
                     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 }
+                headers = {}
+                if self.api_key:
+                    headers["X-API-Key"] = self.api_key
                 resp = requests.post(
                     f"{self.api_url}/api/ingest",
                     json=payload,
+                    headers=headers,
                     timeout=5,
                 )
                 print(f"📤 Ingest POST {resp.status_code}: {counts}")
@@ -324,6 +329,7 @@ def main():
     parser.add_argument('--counter-api-url', type=str, default=None, help='URL of Hono counter service (e.g. http://localhost:3000). If unset, persistence disabled.')
     parser.add_argument('--camera-id', type=str, default='default', help='Unique camera identifier (e.g. "jalan-masuk-utama")')
     parser.add_argument('--ingest-interval', type=int, default=10, help='Seconds between POSTs to counter API')
+    parser.add_argument('--counter-api-key', type=str, default=None, help='API key for authenticating with the counter service')
 
     args = parser.parse_args()
 
@@ -338,6 +344,7 @@ def main():
             api_url=args.counter_api_url,
             camera_id=args.camera_id,
             interval=args.ingest_interval,
+            api_key=args.counter_api_key,
         )
         print(f"   Counter API: {args.counter_api_url} (camera: {args.camera_id}, every {args.ingest_interval}s)")
 
