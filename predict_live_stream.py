@@ -18,6 +18,7 @@ import time
 import threading
 import datetime
 import json
+import requests
 from flask import jsonify, Response, stream_with_context
 
 # Add paths for src and deep_sort_pytorch
@@ -42,6 +43,65 @@ from src.capture.plate_capture import PlateCaptureManager
 COUNTING_LINE_START = (100, 420)    # Start point of the line (Left)
 COUNTING_LINE_END = (1050, 420)    # End point of the line (Right)
 # =================================================================================================
+
+class CounterIngestClient:
+    """Daemon thread that periodically POSTs absolute counts to the Hono counter API.
+
+    Reads counts from the renderer's actual counters (object_counter_in / object_counter_out)
+    which are the source of truth for line-crossing detection.
+    """
+
+    def __init__(self, api_url, camera_id, interval=10):
+        self.api_url = api_url.rstrip("/")
+        self.camera_id = camera_id
+        self.interval = interval
+        self.renderer = None  # Set after engine is created
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def set_renderer(self, renderer):
+        """Attach the renderer whose counters we read from."""
+        self.renderer = renderer
+
+    def _get_counts(self):
+        """Build counts dict from the renderer's actual counters."""
+        r = self.renderer
+        if r is None:
+            return None
+        # renderer uses: object_counter_in["person"], object_counter_out["car"], etc.
+        # Map to the API format: people_in, people_out, motor_in, motor_out, car_in, car_out
+        name_map = {"person": "people", "motorcycle": "motor", "car": "car"}
+        counts = {}
+        for orig, mapped in name_map.items():
+            counts[f"{mapped}_in"] = r.object_counter_in.get(orig, 0)
+            counts[f"{mapped}_out"] = r.object_counter_out.get(orig, 0)
+        return counts
+
+    def _run(self):
+        while not self._stop_event.wait(self.interval):
+            try:
+                counts = self._get_counts()
+                if counts is None:
+                    continue
+                payload = {
+                    "camera_id": self.camera_id,
+                    "counts": counts,
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                }
+                resp = requests.post(
+                    f"{self.api_url}/api/ingest",
+                    json=payload,
+                    timeout=5,
+                )
+                print(f"📤 Ingest POST {resp.status_code}: {counts}")
+            except Exception as e:
+                print(f"⚠️  Ingest POST failed: {e}")
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join(timeout=3)
+
 
 class TrafficCounter:
     """
@@ -260,11 +320,26 @@ def main():
     parser.add_argument('--pixels-per-meter', type=float, default=20.0)
     parser.add_argument('--fps', type=float, default=30.0)
 
+    # Counter persistence arguments
+    parser.add_argument('--counter-api-url', type=str, default=None, help='URL of Hono counter service (e.g. http://localhost:3000). If unset, persistence disabled.')
+    parser.add_argument('--camera-id', type=str, default='default', help='Unique camera identifier (e.g. "jalan-masuk-utama")')
+    parser.add_argument('--ingest-interval', type=int, default=10, help='Seconds between POSTs to counter API')
+
     args = parser.parse_args()
 
     # Initialize Logic
     # 1. Traffic Counter
     counter = TrafficCounter(COUNTING_LINE_START, COUNTING_LINE_END)
+
+    # 1b. Counter Ingest Client (optional persistence)
+    ingest_client = None
+    if args.counter_api_url:
+        ingest_client = CounterIngestClient(
+            api_url=args.counter_api_url,
+            camera_id=args.camera_id,
+            interval=args.ingest_interval,
+        )
+        print(f"   Counter API: {args.counter_api_url} (camera: {args.camera_id}, every {args.ingest_interval}s)")
 
     # 2. Configs
     show_info_panel = args.show_info_panel and not args.hide_info_panel
@@ -375,12 +450,18 @@ def main():
         hydra_config=hydra_config
     )
 
+    # Connect ingest client to the renderer's actual counters
+    if ingest_client:
+        ingest_client.set_renderer(engine.renderer)
+
     try:
         results = engine()
         print("\n✅ Inference completed!")
     except KeyboardInterrupt:
         print("\n⚠️  Interrupted by user")
     finally:
+        if ingest_client:
+            ingest_client.stop()
         streaming_server.stop()
         if enable_plate_capture:
             plate_capture_manager.print_statistics()
