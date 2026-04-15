@@ -21,7 +21,7 @@ class InferenceConfig:
 @dataclass
 class TrackingConfig:
     """Configuration for DeepSORT tracking."""
-    
+
     # Note: reid_checkpoint path is relative to deep_sort_pytorch directory
     reid_checkpoint: str = "deep_sort_pytorch/deep_sort/deep/checkpoint/ckpt.t7"
     max_dist: float = 0.2
@@ -32,6 +32,7 @@ class TrackingConfig:
     n_init: int = 3
     nn_budget: int = 100
     use_cuda: bool = True
+    verbose: bool = False  # Print detailed tracking logs (track updates, frame summaries)
     
 
 @dataclass

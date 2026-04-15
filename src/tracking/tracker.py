@@ -186,27 +186,28 @@ class ObjectTracker:
             # Create or update tracked object
             if track_id not in self.tracks:
                 self.tracks[track_id] = TrackedObject(track_id, bbox, class_id)
-                print(f"🆕 New track created: ID {track_id}")
-            
+                if self.config.verbose:
+                    print(f"New track created: ID {track_id}")
+
             # Update position and calculate speed
             self.tracks[track_id].update_position(bbox, current_time)
             speed = self.tracks[track_id].calculate_speed(
-                self.pixels_per_meter, 
+                self.pixels_per_meter,
                 self.fps
             )
-            
+
             # Debug: Print speed for first few frames of each track
-            if len(self.tracks[track_id].positions) <= 5:
+            if self.config.verbose and len(self.tracks[track_id].positions) <= 5:
                 print(f"   Track {track_id}: {len(self.tracks[track_id].positions)} positions, speed: {speed:.1f} km/h")
-        
+
         # Remove inactive tracks
         inactive_ids = set(self.tracks.keys()) - active_track_ids
         for track_id in inactive_ids:
             del self.tracks[track_id]
-        
-        # Print summary every 100 frames
-        if self.frame_count % 100 == 0:
-            print(f"\n📊 Frame {self.frame_count}: {len(self.tracks)} active tracks")
+
+        # Print summary every 100 frames (only if verbose)
+        if self.config.verbose and self.frame_count % 100 == 0:
+            print(f"\nFrame {self.frame_count}: {len(self.tracks)} active tracks")
             for track_id, track in self.tracks.items():
                 print(f"   Track {track_id}: {track.speed:.1f} km/h ({len(track.positions)} positions)")
         
