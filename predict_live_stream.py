@@ -331,6 +331,9 @@ def main():
     parser.add_argument('--ingest-interval', type=int, default=10, help='Seconds between POSTs to counter API')
     parser.add_argument('--counter-api-key', type=str, default=None, help='API key for authenticating with the counter service')
 
+    # Logging control
+    parser.add_argument('--verbose', action='store_true', help='Enable verbose logging (frame info, track updates, etc.)')
+
     args = parser.parse_args()
 
     # Initialize Logic
@@ -360,7 +363,7 @@ def main():
         iou_threshold=args.iou, device=args.device,
         image_size=[640, 640]
     )
-    tracking_config = TrackingConfig()
+    tracking_config = TrackingConfig(verbose=args.verbose)
     visualization_config = VisualizationConfig(
         counter_direction=args.counter_direction, show_info_panel=show_info_panel,
         show_counters=show_counters, enable_keyboard_reset=enable_keyboard_reset,
@@ -376,6 +379,7 @@ def main():
         'model': args.model, 'source': args.source, 'conf': args.conf,
         'iou': args.iou, 'device': args.device, 'imgsz': [640, 640],
         'show': args.show, 'save': args.save,
+        'verbose': args.verbose,
     }
 
     # 3. Streaming Server & API
