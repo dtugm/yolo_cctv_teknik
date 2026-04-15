@@ -194,16 +194,18 @@ class BasePredictor:
                 if self.args.save:
                     self.save_preds(vid_cap, i, str(self.save_dir / p.name))
 
-            # Print time (inference-only)
-            LOGGER.info(f"{s}{'' if len(preds) else '(no detections), '}{self.dt[1].dt * 1E3:.1f}ms")
+            # Print time (inference-only) - only if verbose is enabled
+            if getattr(self.args, 'verbose', True):
+                LOGGER.info(f"{s}{'' if len(preds) else '(no detections), '}{self.dt[1].dt * 1E3:.1f}ms")
 
             self.run_callbacks("on_predict_batch_end")
 
-        # Print results
-        t = tuple(x.t / self.seen * 1E3 for x in self.dt)  # speeds per image
-        LOGGER.info(
-            f'Speed: %.1fms pre-process, %.1fms inference, %.1fms postprocess per image at shape {(1, 3, *self.imgsz)}'
-            % t)
+        # Print results (only if verbose is enabled)
+        if getattr(self.args, 'verbose', True):
+            t = tuple(x.t / self.seen * 1E3 for x in self.dt)  # speeds per image
+            LOGGER.info(
+                f'Speed: %.1fms pre-process, %.1fms inference, %.1fms postprocess per image at shape {(1, 3, *self.imgsz)}'
+                % t)
         if self.args.save_txt or self.args.save:
             s = f"\n{len(list(self.save_dir.glob('labels/*.txt')))} labels saved to {self.save_dir / 'labels'}" if self.args.save_txt else ''
             LOGGER.info(f"Results saved to {colorstr('bold', self.save_dir)}{s}")
