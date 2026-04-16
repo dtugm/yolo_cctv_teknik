@@ -108,6 +108,70 @@ class CounterIngestClient:
         self._thread.join(timeout=3)
 
 
+class StreamRegistrationClient:
+    """Client for registering/unregistering streams with external API.
+
+    Uses Basic Auth and POSTs stream info when starting,
+    DELETEs when stopping or restarting. This allows a frontend
+    to dynamically list active streams via GET /api/streaming/list.
+    """
+
+    def __init__(self, api_url, username, password):
+        self.api_url = api_url.rstrip("/")
+        self.username = username
+        self.password = password
+        self._current_stream_id = None
+
+    def _get_auth_header(self):
+        """Build Basic Auth header."""
+        import base64
+        credentials = f"{self.username}:{self.password}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+        return {"Authorization": f"Basic {encoded}"}
+
+    def register_stream(self, stream_id, title="", description=""):
+        """POST to register a new stream."""
+        try:
+            payload = {
+                "streamingId": stream_id,
+                "title": title,
+                "description": description,
+            }
+            resp = requests.post(
+                f"{self.api_url}/api/streaming/",
+                json=payload,
+                headers=self._get_auth_header(),
+                timeout=10,
+            )
+            if resp.status_code in (200, 201):
+                self._current_stream_id = stream_id
+                print(f"[Registration] Registered stream: {stream_id}")
+            else:
+                print(f"[Registration] Failed to register stream: {resp.status_code} - {resp.text}")
+        except Exception as e:
+            print(f"[Registration] Error registering stream: {e}")
+
+    def unregister_stream(self):
+        """DELETE to unregister current stream."""
+        if not self._current_stream_id:
+            return
+
+        try:
+            resp = requests.delete(
+                f"{self.api_url}/api/streaming/{self._current_stream_id}",
+                headers=self._get_auth_header(),
+                timeout=10,
+            )
+            if resp.status_code in (200, 204):
+                print(f"[Registration] Unregistered stream: {self._current_stream_id}")
+            else:
+                print(f"[Registration] Failed to unregister stream: {resp.status_code} - {resp.text}")
+        except Exception as e:
+            print(f"[Registration] Error unregistering stream: {e}")
+        finally:
+            self._current_stream_id = None
+
+
 class StreamRestartManager:
     """
     Manages automatic YouTube stream restarts to handle YouTube's 12-hour limit.
@@ -117,8 +181,9 @@ class StreamRestartManager:
     # YouTube has a 12-hour limit; restart at 11h 55m to be safe
     MAX_STREAM_DURATION_SECONDS = 11 * 60 * 60 + 55 * 60  # 11 hours 55 minutes
 
-    def __init__(self, youtube_config: YouTubeStreamingConfig):
+    def __init__(self, youtube_config: YouTubeStreamingConfig, registration_client: StreamRegistrationClient = None):
         self.youtube_config = youtube_config
+        self.registration_client = registration_client
         self.streamer: YouTubeStreamer = None
         self.lock = threading.Lock()
         self.stream_start_time: float = None
@@ -134,6 +199,14 @@ class StreamRestartManager:
                 return False
             self.stream_start_time = time.time()
             self.restart_count = 0
+
+            # Register stream with external API
+            if self.registration_client and self.streamer.broadcast_id:
+                self.registration_client.register_stream(
+                    stream_id=self.streamer.broadcast_id,
+                    title=self.youtube_config.broadcast_title,
+                    description=self.youtube_config.broadcast_description
+                )
 
         # Start monitoring thread
         self._stop_event.clear()
@@ -164,6 +237,10 @@ class StreamRestartManager:
 
     def _restart_stream_locked(self):
         """Restart the stream. Must be called with lock held."""
+        # Unregister current stream before stopping
+        if self.registration_client:
+            self.registration_client.unregister_stream()
+
         # Stop current stream
         if self.streamer:
             try:
@@ -180,6 +257,14 @@ class StreamRestartManager:
             self.stream_start_time = time.time()
             self.restart_count += 1
             print(f"[StreamManager] Stream restarted successfully (restart #{self.restart_count})")
+
+            # Register new stream with external API
+            if self.registration_client and self.streamer.broadcast_id:
+                self.registration_client.register_stream(
+                    stream_id=self.streamer.broadcast_id,
+                    title=self.youtube_config.broadcast_title,
+                    description=self.youtube_config.broadcast_description
+                )
 
             # Wait for FFmpeg to be ready
             time.sleep(5)
@@ -224,6 +309,10 @@ class StreamRestartManager:
             self._monitor_thread.join(timeout=5)
 
         with self.lock:
+            # Unregister stream before final shutdown
+            if self.registration_client:
+                self.registration_client.unregister_stream()
+
             if self.streamer:
                 self.streamer.stop()
                 self.streamer = None
@@ -500,6 +589,14 @@ def main():
     parser.add_argument('--counter-api-key', type=str, default=None,
                        help='API key for authenticating with the counter service')
 
+    # Stream registration arguments
+    parser.add_argument('--registration-api-url', type=str, default=None,
+                       help='URL of stream registration service (e.g. http://localhost:3000). If unset, registration disabled.')
+    parser.add_argument('--registration-username', type=str, default=None,
+                       help='Basic auth username for registration API')
+    parser.add_argument('--registration-password', type=str, default=None,
+                       help='Basic auth password for registration API')
+
     # Logging control
     parser.add_argument('--verbose', action='store_true',
                        help='Enable verbose logging (frame info, track updates, etc.)')
@@ -526,6 +623,19 @@ def main():
             api_key=args.counter_api_key,
         )
         print(f"   Counter API: {args.counter_api_url} (camera: {args.camera_id}, every {args.ingest_interval}s)")
+
+    # Initialize Stream Registration Client (optional)
+    registration_client = None
+    if args.registration_api_url:
+        if not args.registration_username or not args.registration_password:
+            print("Warning: --registration-api-url provided but missing --registration-username or --registration-password. Registration disabled.")
+        else:
+            registration_client = StreamRegistrationClient(
+                api_url=args.registration_api_url,
+                username=args.registration_username,
+                password=args.registration_password,
+            )
+            print(f"   Registration API: {args.registration_api_url}")
 
     # Create configurations
     inference_config = InferenceConfig(
@@ -604,8 +714,10 @@ def main():
     )
 
     # Initialize Stream Manager (handles auto-restart for 12-hour YouTube limit)
-    stream_manager = StreamRestartManager(youtube_config)
+    stream_manager = StreamRestartManager(youtube_config, registration_client=registration_client)
     print("   Auto-restart: Enabled (restarts before 12-hour YouTube limit)")
+    if registration_client:
+        print("   Stream Registration: Enabled")
 
     # Start YouTube stream via manager
     if not stream_manager.start():
