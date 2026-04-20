@@ -1,6 +1,7 @@
 """YouTube Live streaming for YOLO inference results."""
 
 import os
+import platform
 import threading
 import time
 import subprocess
@@ -345,10 +346,66 @@ class YouTubeStreamer:
             print(f"❌ Error testing stream key: {e}")
             return False
     
+    def _get_encoder_candidates(self) -> list[tuple[str, list[str]]]:
+        """Return ordered list of (label, encoder-specific args) based on platform."""
+        system = platform.system()
+        candidates = []
+
+        if system == "Darwin":
+            candidates.append(("h264_videotoolbox", [
+                '-c:v', 'h264_videotoolbox',
+                '-b:v', f'{self.config.video_bitrate}k',
+                '-maxrate', f'{self.config.video_bitrate}k',
+                '-bufsize', f'{self.config.video_bitrate * 2}k',
+                '-profile:v', 'main',
+            ]))
+        elif system == "Linux":
+            candidates.append(("h264_nvenc", [
+                '-c:v', 'h264_nvenc',
+                '-preset', 'p4',
+                '-tune', 'll',
+                '-b:v', f'{self.config.video_bitrate}k',
+                '-maxrate', f'{self.config.video_bitrate}k',
+                '-bufsize', f'{self.config.video_bitrate * 2}k',
+                '-profile:v', 'main',
+            ]))
+            candidates.append(("h264_vaapi", [
+                '-vaapi_device', '/dev/dri/renderD128',
+                '-c:v', 'h264_vaapi',
+                '-vf', 'format=nv12,hwupload',
+                '-b:v', f'{self.config.video_bitrate}k',
+                '-maxrate', f'{self.config.video_bitrate}k',
+                '-bufsize', f'{self.config.video_bitrate * 2}k',
+            ]))
+        elif system == "Windows":
+            candidates.append(("h264_nvenc", [
+                '-c:v', 'h264_nvenc',
+                '-preset', 'p4',
+                '-tune', 'll',
+                '-b:v', f'{self.config.video_bitrate}k',
+                '-maxrate', f'{self.config.video_bitrate}k',
+                '-bufsize', f'{self.config.video_bitrate * 2}k',
+                '-profile:v', 'main',
+            ]))
+
+        # libx264 is always the final fallback on every platform
+        candidates.append(("libx264", [
+            '-c:v', 'libx264',
+            '-preset', self.config.ffmpeg_preset,
+            '-tune', 'zerolatency',
+            '-crf', str(self.config.ffmpeg_crf),
+            '-maxrate', f'{self.config.video_bitrate}k',
+            '-bufsize', f'{self.config.video_bitrate * 2}k',
+            '-profile:v', 'main',
+            '-level', '4.1',
+        ]))
+
+        return candidates
+
     def _start_ffmpeg(self) -> bool:
         """
         Start FFmpeg process for encoding and streaming.
-        
+
         Returns:
             True if FFmpeg started successfully, False otherwise
         """
@@ -359,7 +416,6 @@ class YouTubeStreamer:
         try:
             width, height = self._get_resolution_dimensions()
 
-            # Build two candidate commands: prefer macOS hardware encoder if available, then fall back to libx264
             # Common input args (raw BGR frames via stdin) + silent audio
             common_input_args = [
                 '-y',
@@ -382,7 +438,6 @@ class YouTubeStreamer:
                 '-g', '60',
                 '-keyint_min', '30',
                 '-sc_threshold', '0',
-                '-tune', 'zerolatency',
                 # Audio encoding
                 '-c:a', 'aac',
                 '-b:a', f'{self.config.audio_bitrate}k',
@@ -400,53 +455,25 @@ class YouTubeStreamer:
                 '-flush_packets', '1',
             ]
 
-            # Hardware encoder (macOS VideoToolbox)
-            cmd_videotoolbox = (
-                ['ffmpeg']
-                + common_input_args
-                + [
-                    '-c:v', 'h264_videotoolbox',
-                    '-b:v', f'{self.config.video_bitrate}k',
-                    '-maxrate', f'{self.config.video_bitrate}k',
-                    '-bufsize', f'{self.config.video_bitrate * 2}k',
-                    '-profile:v', 'main',
-                ]
-                + [
-                    # Map video from input 0, audio from input 1
-                    '-map', '0:v:0',
-                    '-map', '1:a:0',
-                ]
-                + common_output_args
-                + [self.rtmp_url]
-            )
+            # Build candidate commands based on platform (HW encoders first, libx264 last)
+            mapping_args = ['-map', '0:v:0', '-map', '1:a:0']
 
-            # Software encoder (libx264)
-            cmd_libx264 = (
-                ['ffmpeg']
-                + common_input_args
-                + [
-                    '-c:v', 'libx264',
-                    '-preset', self.config.ffmpeg_preset,
-                    '-crf', str(self.config.ffmpeg_crf),
-                    '-maxrate', f'{self.config.video_bitrate}k',
-                    '-bufsize', f'{self.config.video_bitrate * 2}k',
-                    '-profile:v', 'main',
-                    '-level', '4.1',
-                ]
-                + [
-                    '-map', '0:v:0',
-                    '-map', '1:a:0',
-                ]
-                + common_output_args
-                + [self.rtmp_url]
-            )
-
-            # Try hardware first, then fallback to software
-            candidate_cmds = [cmd_videotoolbox, cmd_libx264]
+            candidate_cmds = []
+            for label, encoder_args in self._get_encoder_candidates():
+                cmd = (
+                    ['ffmpeg']
+                    + common_input_args
+                    + encoder_args
+                    + mapping_args
+                    + common_output_args
+                    + [self.rtmp_url]
+                )
+                candidate_cmds.append((label, cmd))
 
             last_error = None
-            for cmd in candidate_cmds:
-                print(f"🔧 Starting FFmpeg with command: {' '.join(cmd)}")
+            for label, cmd in candidate_cmds:
+                print(f"🔧 Trying encoder: {label}")
+                print(f"   Command: {' '.join(cmd)}")
                 
                 self.ffmpeg_process = subprocess.Popen(
                     cmd,
@@ -480,31 +507,6 @@ class YouTubeStreamer:
                     print(f"   Last error: {last_error}")
                 return False
             
-            # Start FFmpeg process
-            self.ffmpeg_process = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                bufsize=0
-            )
-            
-            self.ffmpeg_stdin = self.ffmpeg_process.stdin
-            
-            # Give FFmpeg more time to start and connect to RTMP
-            print("⏳ Waiting for FFmpeg to initialize and connect to RTMP...")
-            time.sleep(3)
-            
-            # Check if FFmpeg started successfully
-            if self.ffmpeg_process.poll() is not None:
-                # FFmpeg process terminated immediately
-                try:
-                    stderr_output = self.ffmpeg_process.stderr.read().decode()
-                    print(f"❌ FFmpeg failed to start: {stderr_output}")
-                except:
-                    print("❌ FFmpeg failed to start (unable to read stderr)")
-                return False
-            
             # Additional check: verify FFmpeg is still running after initial wait
             time.sleep(2)
             if self.ffmpeg_process.poll() is not None:
@@ -515,7 +517,7 @@ class YouTubeStreamer:
                 except:
                     pass
                 return False
-            
+
             # Start monitoring FFmpeg stderr for errors
             self._start_ffmpeg_monitoring()
             
