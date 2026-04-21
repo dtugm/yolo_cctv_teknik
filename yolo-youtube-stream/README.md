@@ -40,6 +40,7 @@ Streams any video source directly to YouTube Live without running YOLO detection
 | ---------------------- | ---------------------------------------- | ------------------------------------------------ |
 | `RTSP_SOURCE`          | `rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV` | RTSP stream URL                                  |
 | `CAMERA_ID`            | `jalan-masuk-utama`                      | Camera identifier (used in YouTube title)        |
+| `LOCATION`             | Same as `CAMERA_ID`                      | Location key for grouping streams (shared between inference and passthrough) |
 | `REGISTRATION_API_URL` | `https://ecocampus-proxy.up.railway.app` | Stream registration API URL                      |
 | `YOUTUBE_TITLE`        | `CCTV {CAMERA_ID} - Live Stream`         | YouTube broadcast title                          |
 | `YOUTUBE_PRIVACY`      | `unlisted`                               | YouTube privacy: `public`, `private`, `unlisted` |
@@ -62,6 +63,7 @@ export REGISTRATION_USERNAME="admin"
 export REGISTRATION_PASSWORD="secret"
 export RTSP_SOURCE="rtsp://192.168.1.100:554/stream"
 export CAMERA_ID="parking-lot"
+export LOCATION="parking-lot"
 
 ./run-passthrough-stream.sh
 ```
@@ -96,6 +98,7 @@ python passthrough_youtube_stream.py \
     --registration-api-url "https://ecocampus-proxy.up.railway.app" \
     --registration-username "admin" \
     --registration-password "secret" \
+    --location "jalan-masuk-utama" \
     --youtube-title "CCTV Live"
 ```
 
@@ -145,6 +148,7 @@ Runs the vehicle detection and counting system with YouTube Live streaming outpu
 | ---------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
 | `RTSP_SOURCE`          | `rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV`                    | RTSP stream URL                                  |
 | `CAMERA_ID`            | `jalan-masuk-utama`                                          | Camera identifier                                |
+| `LOCATION`             | Same as `CAMERA_ID`                                          | Location key for grouping streams                |
 | `COUNTER_API_URL`      | `https://cctv-vehicle-counter-api-production.up.railway.app` | Counter API URL                                  |
 | `REGISTRATION_API_URL` | `https://ecocampus-proxy.up.railway.app`                     | Stream registration API URL                      |
 | `YOUTUBE_TITLE`        | `CCTV {CAMERA_ID} - Vehicle Detection`                       | YouTube broadcast title                          |
@@ -222,11 +226,26 @@ Headers: Authorization: Basic {base64(username:password)}
 Body: {
   "streamingId": "youtube-broadcast-id",
   "title": "CCTV jalan-masuk-utama - Vehicle Detection",
-  "description": "..."
+  "description": "...",
+  "type": "with-inference",        // optional: "with-inference" or "no-inference"
+  "location": "jalan-masuk-utama"  // optional: shared key to group streams by location
 }
 
 DELETE {REGISTRATION_API_URL}/api/streaming/{streamingId}
 Headers: Authorization: Basic {base64(username:password)}
+
+GET {REGISTRATION_API_URL}/api/streaming/list
+GET {REGISTRATION_API_URL}/api/streaming/list?type=with-inference
+GET {REGISTRATION_API_URL}/api/streaming/list?location=jalan-masuk-utama
+
+GET {REGISTRATION_API_URL}/api/streaming/grouped
+Returns: [
+  {
+    "location": "jalan-masuk-utama",
+    "with_inference_stream_id": "abc123",
+    "no_inference_stream_id": "def456"
+  }
+]
 ```
 
 ---

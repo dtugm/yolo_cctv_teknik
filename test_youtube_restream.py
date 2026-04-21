@@ -60,7 +60,7 @@ class StreamRegistrationClient:
         encoded = base64.b64encode(credentials.encode()).decode()
         return {"Authorization": f"Basic {encoded}"}
 
-    def register_stream(self, stream_id, title="", description=""):
+    def register_stream(self, stream_id, title="", description="", stream_type="", location=""):
         """POST to register a new stream."""
         try:
             payload = {
@@ -68,6 +68,10 @@ class StreamRegistrationClient:
                 "title": title,
                 "description": description,
             }
+            if stream_type:
+                payload["type"] = stream_type
+            if location:
+                payload["location"] = location
             resp = requests.post(
                 f"{self.api_url}/api/streaming/",
                 json=payload,
@@ -109,10 +113,13 @@ class TestStreamRestartManager:
     Logs more frequently to help verify the restart logic.
     """
 
-    def __init__(self, youtube_config: YouTubeStreamingConfig, restart_interval: int = TEST_RESTART_INTERVAL_SECONDS, registration_client: StreamRegistrationClient = None):
+    def __init__(self, youtube_config: YouTubeStreamingConfig, restart_interval: int = TEST_RESTART_INTERVAL_SECONDS,
+                 registration_client: StreamRegistrationClient = None, stream_type: str = "", location: str = ""):
         self.youtube_config = youtube_config
         self.restart_interval = restart_interval
         self.registration_client = registration_client
+        self.stream_type = stream_type
+        self.location = location
         self.streamer: YouTubeStreamer = None
         self.lock = threading.Lock()
         self.stream_start_time: float = None
@@ -135,6 +142,8 @@ class TestStreamRestartManager:
                     stream_id=self.streamer.broadcast_id,
                     title=self.youtube_config.broadcast_title,
                     description=self.youtube_config.broadcast_description,
+                    stream_type=self.stream_type,
+                    location=self.location,
                 )
 
         # Start monitoring thread
@@ -199,6 +208,8 @@ class TestStreamRestartManager:
                     stream_id=self.streamer.broadcast_id,
                     title=self.youtube_config.broadcast_title,
                     description=self.youtube_config.broadcast_description,
+                    stream_type=self.stream_type,
+                    location=self.location,
                 )
 
             # Wait for FFmpeg to be ready

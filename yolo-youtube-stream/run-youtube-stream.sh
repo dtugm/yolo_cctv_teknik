@@ -33,6 +33,7 @@ RTSP_SOURCE="${RTSP_SOURCE:-rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV}"
 CAMERA_ID="${CAMERA_ID:-jalan-masuk-utama}"
 COUNTER_API_URL="${COUNTER_API_URL:-https://cctv-vehicle-counter-api-production.up.railway.app}"
 REGISTRATION_API_URL="${REGISTRATION_API_URL:-https://ecocampus-proxy.up.railway.app}"
+LOCATION="${LOCATION:-${CAMERA_ID}}"
 YOUTUBE_TITLE="${YOUTUBE_TITLE:-CCTV ${CAMERA_ID} - Vehicle Detection}"
 YOUTUBE_PRIVACY="${YOUTUBE_PRIVACY:-unlisted}"
 
@@ -57,6 +58,7 @@ echo "  YOLO + YouTube Live Stream + Hono Server"
 echo "=============================================================="
 echo "  RTSP Source:       $RTSP_SOURCE"
 echo "  Camera ID:         $CAMERA_ID"
+echo "  Location:          $LOCATION"
 echo "  Counter API:       $COUNTER_API_URL"
 echo "  Registration API:  $REGISTRATION_API_URL"
 echo "  YouTube Title:     $YOUTUBE_TITLE"
@@ -80,7 +82,8 @@ while true; do
         --youtube-title "$YOUTUBE_TITLE" \
         --youtube-privacy "$YOUTUBE_PRIVACY" \
         --youtube-resolution 720p \
-        --youtube-bitrate 2500
+        --youtube-bitrate 2500 \
+        --location "$LOCATION"
 
     EXIT_CODE=$?
     echo "Process exited with code $EXIT_CODE at $(date). Restarting in 5 seconds..."

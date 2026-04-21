@@ -32,6 +32,7 @@ cd "$(dirname "$0")/.."
 # Default values
 RTSP_SOURCE="${RTSP_SOURCE:-rtsp://10.2.10.70:7447/owNskP1rv1LKe2mV}"
 CAMERA_ID="${CAMERA_ID:-jalan-masuk-utama}"
+LOCATION="${LOCATION:-${CAMERA_ID}}"
 REGISTRATION_API_URL="${REGISTRATION_API_URL:-https://ecocampus-proxy.up.railway.app}"
 YOUTUBE_TITLE="${YOUTUBE_TITLE:-CCTV ${CAMERA_ID} - Live Stream}"
 YOUTUBE_PRIVACY="${YOUTUBE_PRIVACY:-unlisted}"
@@ -52,6 +53,7 @@ echo "  Passthrough YouTube Live Stream (no inference)"
 echo "=============================================================="
 echo "  RTSP Source:       $RTSP_SOURCE"
 echo "  Camera ID:         $CAMERA_ID"
+echo "  Location:          $LOCATION"
 echo "  Registration API:  $REGISTRATION_API_URL"
 echo "  YouTube Title:     $YOUTUBE_TITLE"
 echo "  YouTube Privacy:   $YOUTUBE_PRIVACY"
@@ -70,7 +72,8 @@ while true; do
         --youtube-title "$YOUTUBE_TITLE" \
         --youtube-privacy "$YOUTUBE_PRIVACY" \
         --youtube-resolution 720p \
-        --youtube-bitrate 2500
+        --youtube-bitrate 2500 \
+        --location "$LOCATION"
 
     EXIT_CODE=$?
     echo "Process exited with code $EXIT_CODE at $(date). Restarting in 5 seconds..."
